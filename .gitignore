@@ -1,0 +1,6 @@
+# build and compile files
+build/
+*.o
+*.exe
+__pycache__/
+.vscode/
