@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A 6DOF simulation of a missile/interceptor. C++ implements the physics models; Python drives the simulation lifecycle via a scheduler.
+An asynchronous time based simulation architecture. C++ implements the physics models, passing data through a pub/sub message bus; Python sets input parameters, orchestrates scenarios, and drives the simulation lifecycle via a scheduler.
 
 ## Build
 
