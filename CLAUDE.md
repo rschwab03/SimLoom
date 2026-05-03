@@ -4,80 +4,58 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-An asynchronous time based simulation architecture. C++ implements the physics models, passing data through a pub/sub message bus; Python sets input parameters, orchestrates scenarios, and drives the simulation lifecycle via a scheduler.
+An asynchronous, multi-rate simulation framework. C++ implements the models, passing data through a pub/sub message bus; Python sets input parameters, orchestrates scenarios, and drives the simulation lifecycle via a scheduler. SimLoom is domain-agnostic — do not add references to specific simulation domains (aerospace, finance, etc.) in shared framework code.
 
-## Build
-
-```bash
-cmake -B build
-cmake --build build
-```
-
-Model shared libraries are placed in `build/models/`.
-
-## Running
+## Commands
 
 ```bash
+./build.sh                        # configure + compile all models
+./docs.sh                         # generate HTML docs → docs/html/index.html
+
 cd python
-python main.py
+python main.py                    # run all discovered models for 50 ms
+python3 scenarios/hello_world.py  # run a single scenario
 ```
 
 ## Architecture
 
+### Key invariant: message bus loading order
+
+`Scheduler.__init__` loads `message_bus.so` with `RTLD_GLOBAL` **before** any model `.so`. This is what gives all models a shared singleton — without `RTLD_GLOBAL` each `.so` gets its own copy. Never reorder this.
+
 ### C++ Models (`src/models/`)
 
-Each model is compiled as a separate shared library (`.so`) and must implement the functions declared in `src/models/model_interface.hpp`:
-
-| Function | Description |
-|---|---|
-| `model_name()` | String identifier |
-| `model_update_rate()` | Execution rate in Hz |
-| `model_order()` | Initialization order (ascending) |
-| `model_stop_time()` | Stop time in seconds; `-1.0` = run until sim ends |
-| `model_initialize()` | Called once before the sim loop, in `model_order` sequence |
-| `model_update(double sim_time)` | Called each scheduled time step |
-| `model_finalize()` | Called once after the sim loop for all models |
+Each model is a separate shared library implementing the seven functions in `model_interface.hpp`. The CMake helper `add_model(<name> <name>.cpp)` in `src/models/CMakeLists.txt` handles build configuration. Output lands in `build/models/<name>.so` (no `lib` prefix).
 
 To add a new model:
-1. Create `src/models/<name>.cpp` implementing all interface functions
+1. Create `src/models/<name>.cpp` implementing all interface functions (`hello_world.cpp` is the annotated template)
 2. Add `add_model(<name> <name>.cpp)` to `src/models/CMakeLists.txt`
-3. Create `python/models/<name>.py` with the model's input `params` dict
+3. Create `python/models/<name>.py` with `order`, `update_rate`, `stop_time`, and `params`
 
 ### Python Models (`python/models/`)
 
-Each C++ model has a matching `.py` file (same name) that specifies its input parameters. These are loaded by the scheduler and passed to the C++ model before initialization.
+Each `.py` config file is the authoritative source for a model's scheduling parameters — the values here override whatever the C++ functions return. The `params` dict is a placeholder for future parameter-passing; it is not yet consumed by the scheduler.
 
-### Python Scheduler (`python/scheduler.py`)
+### Scheduler (`python/scheduler.py`)
 
-- **`Model`** — wraps a `.so` via `ctypes`; exposes `name`, `update_rate`, `dt`, `order`, `stop_time`
-- **`Scheduler`** — manages the full sim lifecycle:
-  1. `_initialize()` — calls `model_initialize()` on all models sorted by `order`, then pushes all onto a min-heap at `t=0`
-  2. Event loop — pops `(next_time, model)`, calls `model_update()`, re-queues at `next_time + dt` unless `stop_time` has been reached
-  3. `_finalize()` — calls `model_finalize()` on all models
+Multi-rate event loop built on a min-heap. Each tick pops the earliest `(next_time, model)` pair, calls `model_update(sim_time)`, and re-queues at `next_time + dt`. A model with `stop_time >= 0` stops being updated once `sim_time` reaches that value; `model_finalize()` is still called for it at sim end.
 
-`main.py` is the entry point: discovers `.so` files in `build/models/`, prints the model registry, and calls `sched.run(duration)`.
+### Scenarios (`python/scenarios/`)
+
+Standalone scripts that explicitly load only the models they need. Prefer scenarios over `main.py` when you want a controlled, reproducible run with a specific model subset.
 
 ## Message Bus
 
-A shared signal store (`src/message_bus/`) compiled as `build/message_bus.so`. All models can exchange data through it without direct linkage.
-
-**API** (`#include "message_bus.hpp"`):
 ```cpp
-MessageBus::instance().publish("subsystem/signal_name", value);
-double v = MessageBus::instance().get("subsystem/signal_name", default_val);
-bool exists  = MessageBus::instance().has("subsystem/signal_name");
-MessageBus::instance().reset(); // clears all signals
+#include "message_bus.hpp"
+MessageBus::instance().publish("subsystem/signal", value);
+double v = MessageBus::instance().get("subsystem/signal", default_val);
+bool   e = MessageBus::instance().has("subsystem/signal");
+MessageBus::instance().reset();
 ```
 
-**Key convention:** `"subsystem/signal_name"` (e.g., `"nav/altitude"`, `"guidance/commanded_az"`).
+Key convention: `"subsystem/signal_name"`. All signals are `double`.
 
-**Loading order:** `Scheduler.__init__` loads `message_bus.so` with `RTLD_GLOBAL` before any model `.so` files. This ensures all models share the same singleton instance — without `RTLD_GLOBAL` each `.so` would get its own copy.
+## Documentation
 
-## Scenarios
-
-`python/scenarios/` contains standalone runnable scripts that selectively load models and set a simulation duration. Unlike `main.py` (which auto-discovers all models), each scenario explicitly loads only the models it needs and configures them via the matching `python/models/<name>.py` config.
-
-```bash
-cd python
-python3 scenarios/hello_world.py
-```
+Doxygen is configured via `Doxyfile`. Each model's `.cpp` should include a `@file` MDR block — see `hello_world.cpp` for the template. MDR sections (Model Descriptions and Reports) cover: overview, message bus inputs, message bus outputs, block diagram position, and verification evidence.
