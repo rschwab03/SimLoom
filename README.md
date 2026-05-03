@@ -150,9 +150,33 @@ The `hello_world` model in `src/models/hello_world.cpp` is a fully annotated tem
 
 ---
 
+## Getting Started
+
+### With Nix (recommended)
+
+[Install Nix](https://nixos.org/download/), then from the repo root:
+
+```bash
+nix develop          # enter a shell with all tools pre-configured
+./build.sh
+```
+
+If you use [direnv](https://direnv.net/), the environment loads automatically on `cd`:
+
+```bash
+direnv allow         # one-time approval; shell activates on every cd after this
+```
+
+The `flake.lock` file (generated on first `nix develop`) pins the exact toolchain version — every developer and CI machine gets identical tools.
+
+### Without Nix
+
+Install manually: `cmake` (≥ 3.15), a C++17 compiler, `python3`, and `doxygen`.
+
 ## Building
 
 ```bash
 ./build.sh          # compile all models
 ./docs.sh           # generate HTML documentation → docs/html/index.html
+./clean.sh          # remove all build artifacts
 ```
