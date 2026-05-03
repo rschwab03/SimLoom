@@ -1,0 +1,77 @@
+@page mdr_hello_world MDR: hello_world
+
+@section mdr_hw_overview Overview
+
+`hello_world` is a minimal reference model that exercises every scheduler
+lifecycle hook without performing any computation or touching the message bus.
+It prints a diagnostic message at each phase — initialize, each update step,
+and finalize — so the scheduler's dispatch order and timing can be confirmed
+by inspection.
+
+Its two roles in the framework are:
+- **Template**: `hello_world.cpp` is the annotated starting point for all new
+  model authors. It explains every required function and the boilerplate needed
+  to export symbols for Python's `ctypes`.
+- **Smoke test**: running the `hello_world` scenario confirms that the build,
+  shared library loading, message bus singleton, and scheduler event loop are
+  all functioning before any real model is introduced.
+
+The model runs at **1 Hz** for the full duration of any scenario it is loaded into.
+
+@section mdr_hw_impl Implementation
+
+Scheduling metadata returned to the scheduler at startup:
+
+@snippet src/models/hello_world.cpp model_metadata
+
+Lifecycle functions called by the scheduler:
+
+@snippet src/models/hello_world.cpp model_lifecycle
+
+@section mdr_hw_signals Signal Interface
+
+<!-- SIGNALS -->
+
+@section mdr_hw_block Block Diagram Position
+
+`hello_world` has no message bus dependencies and no downstream consumers.
+It can be loaded alongside any set of models without affecting their signal
+state. In a real simulation block diagram it would be omitted entirely — its
+place is in the test harness, not the signal chain.
+
+@verbatim
+  [Scheduler]
+       |
+       v
+ +-------------+
+ | hello_world |   (no inputs, no outputs)
+ +-------------+
+@endverbatim
+
+@section mdr_hw_verification Verification
+
+Run the scenario from the `python/` directory:
+
+@code{.sh}
+python3 scenarios/hello_world.py
+@endcode
+
+Expected console output (5-second run at 1 Hz):
+
+@code{.sh}
+Hello World!
+sim_time = 0.000000 s
+sim_time = 1.000000 s
+sim_time = 2.000000 s
+sim_time = 3.000000 s
+sim_time = 4.000000 s
+So Long, and Thanks for All the Fish!
+@endcode
+
+| Check | Expected | Status |
+|---|---|---|
+| `model_initialize` fires once | "Hello World!" printed exactly once | PASS |
+| `model_update` fires at 1 Hz | 5 lines for a 5 s run | PASS |
+| Sim time increments by 1.0 s | Lines show 0, 1, 2, 3, 4 | PASS |
+| `model_finalize` fires once | Closing message printed after loop | PASS |
+| No message bus side effects | No signals present on bus after run | PASS |

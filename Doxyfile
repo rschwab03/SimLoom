@@ -12,3 +12,6 @@ WARNINGS               = YES
 WARN_IF_UNDOCUMENTED   = NO
 HTML_OUTPUT            = html
 USE_MDFILE_AS_MAINPAGE = README.md
+INPUT                  += mdrs/index.dox
+FILTER_PATTERNS         = "*.cpp=python3 scripts/mdr_filter.py"
+EXAMPLE_PATH            = .

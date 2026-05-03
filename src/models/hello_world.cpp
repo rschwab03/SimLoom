@@ -23,6 +23,7 @@ extern "C" {
 // --------------------------------------------------------------------------
 
 // CHANGE THIS: return a unique string identifier for your model.
+//! [model_metadata]
 const char* model_name()        { return "hello_world"; }
 
 // CHANGE THIS: how many times per second model_update() should be called.
@@ -37,6 +38,7 @@ int         model_order()       { return 1; }
 // CHANGE THIS: simulation time (seconds) at which to stop calling model_update().
 // Use -1.0 to run for the full duration of the scenario.
 double      model_stop_time()   { return -1.0; }
+//! [model_metadata]
 
 // --------------------------------------------------------------------------
 // LIFECYCLE FUNCTIONS
@@ -46,6 +48,7 @@ double      model_stop_time()   { return -1.0; }
 // Called once, before the simulation loop begins.
 // Use this to allocate memory, open files, set initial conditions, etc.
 // Models are initialized in ascending model_order() sequence.
+//! [model_lifecycle]
 void model_initialize() {
     printf("Hello World!\n");
 }
@@ -62,5 +65,6 @@ void model_update(double sim_time) {
 void model_finalize() {
     printf("So Long, and Thanks for All the Fish!\n");
 }
+//! [model_lifecycle]
 
 } // extern "C"  --- BOILERPLATE: must close the extern "C" block

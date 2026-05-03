@@ -1,0 +1,12 @@
+/*!
+ * @page mdr_index Model Descriptions and Reports
+ *
+ * Each model in the simulation has a Model Description Report (MDR) documenting
+ * what it does, where it fits in the signal flow, and how its correctness was
+ * verified. Signal interface tables are auto-generated from the C++ source —
+ * they update automatically whenever message bus calls change.
+ *
+ * @subpage mdr_hello_world
+ *
+ * @subpage mdr_example_model
+ */
