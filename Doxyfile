@@ -1,0 +1,14 @@
+PROJECT_NAME           = "SimLoom"
+PROJECT_BRIEF          = "Multi-rate C++/Python simulation framework"
+OUTPUT_DIRECTORY       = docs
+INPUT                  = src README.md
+RECURSIVE              = YES
+FILE_PATTERNS          = *.hpp *.cpp
+EXTRACT_ALL            = YES
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = NO
+HTML_OUTPUT            = html
+USE_MDFILE_AS_MAINPAGE = README.md

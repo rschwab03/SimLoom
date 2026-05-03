@@ -4,3 +4,6 @@ build/
 *.exe
 __pycache__/
 .vscode/
+
+# generated documentation
+docs/
