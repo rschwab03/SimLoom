@@ -6,6 +6,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 An asynchronous, multi-rate simulation framework. C++ implements the models, passing data through a pub/sub message bus; Python sets input parameters, orchestrates scenarios, and drives the simulation lifecycle via a scheduler. SimLoom is domain-agnostic — do not add references to specific simulation domains (aerospace, finance, etc.) in shared framework code.
 
+## Environment
+
+The toolchain (gcc, cmake, python3, doxygen) comes from the Nix flake. Run build and Python commands through it:
+
+```bash
+nix develop -c ./build.sh
+nix develop -c python3 python/main.py
+```
+
+## Git workflow (important for remote/unattended sessions)
+
+- Never commit or push directly to `main`; it is protected.
+- Work on a branch named `claude/<short-topic>`, commit, and push it.
+- Open pull requests with the `gh` CLI (already authenticated via `GH_TOKEN`), e.g. `gh pr create --base main --head <branch> --title "..." --body "..."`. Do not look for an MCP GitHub tool.
+- Never merge a PR, force-push, or delete branches/repos; the owner reviews and merges.
+
 ## Commands
 
 ```bash
