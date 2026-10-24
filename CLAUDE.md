@@ -56,6 +56,20 @@ MessageBus::instance().reset();
 
 Key convention: `"subsystem/signal_name"`. All signals are `double`.
 
+## Logging (`python/loggers/`)
+
+Loggers are configured from Python, so recording a new signal needs no C++ rebuild. They read the bus through the `extern "C"` API in `message_bus.hpp` (`bus_get`, `bus_has`, `bus_publish`, `bus_keys`), wrapped by `python/bus.py` and exposed as `Scheduler.bus`.
+
+```python
+from loggers import InitialConditionLogger
+log = InitialConditionLogger("output/run/ic.json")
+log.add("example/*")              # bus key or glob
+log.add_value("note", "baseline") # any JSON-serialisable Python value
+sched.add_logger(log)
+```
+
+The scheduler calls `on_initialize(sched)` after all `model_initialize()` calls, `on_step(sched, model)` after each `model_update()`, and `on_finalize(sched)` after all `model_finalize()` calls. To add a new logger type, subclass `loggers.base.Logger` and override the hooks it needs. `InitialConditionLogger` writes `{"run": metadata, "signals": ..., "values": ...}` once, at initialize. Output goes under `output/` (gitignored).
+
 ## Documentation
 
 Doxygen is configured via `Doxyfile`. Each model's `.cpp` should include a `@file` MDR block — see `hello_world.cpp` for the template. MDR sections (Model Descriptions and Reports) cover: overview, message bus inputs, message bus outputs, block diagram position, and verification evidence.

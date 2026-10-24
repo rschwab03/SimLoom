@@ -3,6 +3,8 @@ import glob
 import heapq
 import os
 
+from bus import MessageBus
+
 BUS_LIB = os.path.join(os.path.dirname(__file__), "..", "build", "message_bus.so")
 
 
@@ -10,7 +12,8 @@ class Model:
     """Wraps a compiled C++ shared library that implements model_interface.hpp."""
 
     def __init__(self, lib_path: str, order: int = None,
-                 update_rate: float = None, stop_time: float = None):
+                 update_rate: float = None, stop_time: float = None,
+                 params: dict = None):
         self._lib = ctypes.CDLL(lib_path)
 
         self._lib.model_name.restype = ctypes.c_char_p
@@ -27,6 +30,7 @@ class Model:
         self.update_rate: float = update_rate if update_rate is not None else self._lib.model_update_rate()
         self.stop_time: float = stop_time if stop_time is not None else self._lib.model_stop_time()
         self.dt: float = 1.0 / self.update_rate
+        self.params: dict = params if params is not None else {}
 
     def initialize(self) -> None:
         self._lib.model_initialize()
@@ -53,21 +57,33 @@ class Scheduler:
     Per-model stop_time:
       A model with stop_time >= 0 stops being updated once sim_time reaches
       that value. model_finalize() is still called for it at sim end.
+
+    Loggers:
+      Registered loggers (see loggers/) are notified after initialization,
+      after every model update, and after finalization.
     """
 
     def __init__(self) -> None:
-        ctypes.CDLL(BUS_LIB, mode=ctypes.RTLD_GLOBAL)  # must precede model loads
+        self.bus = MessageBus(ctypes.CDLL(BUS_LIB, mode=ctypes.RTLD_GLOBAL))  # must precede model loads
         self._heap: list[tuple[float, Model]] = []
         self.sim_time: float = 0.0
+        self.duration: float = 0.0
         self.models: list[Model] = []
+        self.loggers: list = []
 
     def add_model(self, model: Model) -> None:
         """Register a Model instance with the scheduler."""
         self.models.append(model)
 
-    def load_model(self, lib_path: str, order=None, update_rate=None, stop_time=None) -> Model:
+    def add_logger(self, logger) -> None:
+        """Register a logger (see loggers/) to be notified at lifecycle points."""
+        self.loggers.append(logger)
+
+    def load_model(self, lib_path: str, order=None, update_rate=None, stop_time=None,
+                   params=None) -> Model:
         """Load a shared library, wrap it as a Model, and register it."""
-        model = Model(lib_path, order=order, update_rate=update_rate, stop_time=stop_time)
+        model = Model(lib_path, order=order, update_rate=update_rate, stop_time=stop_time,
+                      params=params)
         self.add_model(model)
         return model
 
@@ -81,11 +97,15 @@ class Scheduler:
             model.initialize()
         for model in self.models:
             heapq.heappush(self._heap, (0.0, model))
+        for logger in self.loggers:
+            logger.on_initialize(self)
 
     def _step(self) -> None:
         next_time, model = heapq.heappop(self._heap)
         self.sim_time = next_time
         model.update(self.sim_time)
+        for logger in self.loggers:
+            logger.on_step(self, model)
         next_scheduled = next_time + model.dt
         # Re-queue only if the model's stop_time has not been reached
         if model.stop_time < 0.0 or next_scheduled <= model.stop_time:
@@ -94,9 +114,12 @@ class Scheduler:
     def _finalize(self) -> None:
         for model in self.models:
             model.finalize()
+        for logger in self.loggers:
+            logger.on_finalize(self)
 
     def run(self, duration: float) -> None:
         """Run the full simulation lifecycle for the given duration (seconds)."""
+        self.duration = duration
         self._initialize()
         while self._heap and self._heap[0][0] < duration:
             self._step()

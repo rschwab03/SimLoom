@@ -114,6 +114,28 @@ This is in contrast to `main.py`, which auto-discovers every `.so` in the build 
 
 ---
 
+## Logging
+
+Loggers record message bus signals to disk. They live in `python/loggers/` and are set up entirely in the scenario script, so you can start recording a new signal without rebuilding any C++.
+
+```python
+from loggers import InitialConditionLogger
+
+ic_log = InitialConditionLogger("output/my_run/ic.json")
+ic_log.add("example/counter")            # an exact bus key
+ic_log.add("nav/*")                      # or a glob pattern
+ic_log.add_value("description", "run 1") # any Python constant: numbers, strings, dicts
+sched.add_logger(ic_log)
+```
+
+Different kinds of variables go to different logger types. `InitialConditionLogger` is for initial conditions and constant inputs: it takes one snapshot right after every model has initialized and writes JSON with three sections. `run` holds the timestamp, duration, and each model's order, rate, stop time and params. `signals` holds the bus values. `values` holds the Python constants. The file is written right away, so it survives a crash later in the run.
+
+Every logger subclasses `loggers.base.Logger` and receives three scheduler hooks: `on_initialize`, `on_step` (after each model update), and `on_finalize`. Python reads the bus through a small C API (`bus_get`, `bus_has`, `bus_publish`, `bus_keys`) exported by `message_bus.so`.
+
+See `python/scenarios/initial_conditions.py` for a complete example.
+
+---
+
 ## Project layout
 
 ```
@@ -124,6 +146,8 @@ SimLoom/
 │       └── model_interface.hpp   # the seven-function contract every model implements
 ├── python/
 │   ├── scheduler.py        # Model wrapper + Scheduler event loop
+│   ├── bus.py              # ctypes view of the message bus
+│   ├── loggers/            # logger types (initial conditions, ...)
 │   ├── main.py             # auto-discovers all .so files and runs them
 │   ├── models/             # per-model Python config (order, update_rate, stop_time, params)
 │   └── scenarios/          # standalone run scripts

@@ -12,8 +12,10 @@
  * model libraries so that all models reference the same singleton instance.
  */
 
+#include <cstddef>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 class MessageBus {
 public:
@@ -34,6 +36,9 @@ public:
     /// Returns true if @p key has been published at least once.
     bool has(const std::string& key) const;
 
+    /// Returns every key that has been published, in unspecified order.
+    std::vector<std::string> keys() const;
+
     /// Removes all signals. Typically called between simulation runs.
     void reset();
 
@@ -41,3 +46,32 @@ private:
     MessageBus() = default;
     std::unordered_map<std::string, double> signals_;
 };
+
+/**
+ * @name C API
+ * @brief Plain-C access to the singleton so Python (ctypes) can read and
+ * write signals without any model-specific code. Used by the Python loggers.
+ */
+///@{
+extern "C" {
+
+/// Equivalent to `MessageBus::instance().get(key, default_val)`.
+double bus_get(const char* key, double default_val);
+
+/// Returns 1 if @p key has been published, 0 otherwise.
+int bus_has(const char* key);
+
+/// Equivalent to `MessageBus::instance().publish(key, value)`.
+void bus_publish(const char* key, double value);
+
+/**
+ * @brief Write all published keys into @p buf, separated by `'\n'`.
+ * @param buf     Destination buffer (may be null when @p buflen is 0).
+ * @param buflen  Size of @p buf in bytes.
+ * @return Number of bytes required, excluding the null terminator. If this is
+ *         >= @p buflen the output was truncated; call again with a larger buffer.
+ */
+size_t bus_keys(char* buf, size_t buflen);
+
+} // extern "C"
+///@}
