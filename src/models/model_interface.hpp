@@ -14,7 +14,12 @@ extern "C" {
 /// Human-readable model identifier. Must be unique across all loaded models.
 const char* model_name();
 
-/// Desired execution rate in Hz. The scheduler calls model_update() at this frequency.
+/**
+ * @brief Desired execution rate in Hz. The scheduler calls model_update() at this frequency.
+ *
+ * Return 0.0 for a model that is not clock-driven: it is initialized and
+ * finalized, but never scheduled for model_update().
+ */
 double model_update_rate();
 
 /**
@@ -36,6 +41,9 @@ double model_stop_time();
 /**
  * @brief Called once before the simulation loop, in model_order() sequence.
  *
+ * Establishes the model's state at t = 0: publish initial values here, since
+ * model_update() is not called at t = 0.
+ *
  * Use this to allocate resources, publish initial signal values to the
  * message bus, or set up any state the model needs before updates begin.
  */
@@ -44,6 +52,11 @@ void model_initialize();
 /**
  * @brief Called each scheduled time step at model_update_rate() Hz.
  * @param sim_time Current simulation time in seconds.
+ *
+ * Brings the model's state from its previous update (or from t = 0, set by
+ * model_initialize()) to @p sim_time. The first call is at
+ * sim_time = 1 / model_update_rate(), never at t = 0; values published here
+ * are the model's state at @p sim_time and hold until its next update.
  *
  * This is where the model's core logic executes each frame. Read inputs from
  * the message bus, compute outputs, and publish results back to the bus.
@@ -57,5 +70,16 @@ void model_update(double sim_time);
  * files, free resources, or print summary statistics.
  */
 void model_finalize();
+
+/**
+ * @brief Optional. Receives this instance's name when the model is loaded
+ *        with an instance name (`load_model(..., instance="name")`).
+ *
+ * Each instance is loaded from its own copy of the library, so static state
+ * is already separate per instance. Use the name to keep bus keys separate
+ * too, e.g. publish under `"<name>/signal"`. Called once, before every other
+ * function. Models that are never instantiated more than once can omit it.
+ */
+void model_set_instance(const char* name);
 
 } // extern "C"

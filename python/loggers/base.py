@@ -17,6 +17,7 @@ class Logger:
     The scheduler calls these hooks; subclasses override the ones they need:
       on_initialize(sched)      once, after every model_initialize()
       on_step(sched, model)     after every model_update()
+      on_frame(sched)           after all model_update() calls sharing one sim_time
       on_finalize(sched)        once, after every model_finalize()
     """
 
@@ -59,6 +60,7 @@ class Logger:
             "models": [
                 {
                     "name": m.name,
+                    "type": m.type,
                     "order": m.order,
                     "update_rate": m.update_rate,
                     "stop_time": m.stop_time,
@@ -72,6 +74,9 @@ class Logger:
         pass
 
     def on_step(self, sched, model) -> None:
+        pass
+
+    def on_frame(self, sched) -> None:
         pass
 
     def on_finalize(self, sched) -> None:

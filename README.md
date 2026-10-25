@@ -40,6 +40,10 @@ void        model_update(double sim_time); // called each time step
 void        model_finalize();    // called once after the sim loop
 ```
 
+Two extras build on this:
+- **Instances:** a model can be instantiated several times with `load_model(path, instance="name")`. Each instance loads its own copy of the library, so its state is independent. If the model implements the optional `model_set_instance(const char* name)`, it receives the instance name before any other call and can publish under its own key prefix, such as `fast/counter` versus `slow/counter`.
+- **Not clock-driven:** an `update_rate` of `0` means the model is initialized and finalized but never scheduled for `model_update()`.
+
 The interface is deliberately narrow. The scheduler only needs to know three things about a model: when to start it, how often to call it, and when to stop. Everything else is the model's private concern.
 
 The functions use C linkage (`extern "C"`) so that Python's `ctypes` library can find them by name. C++ normally "mangles" function names during compilation to encode type information; `extern "C"` suppresses that, keeping the names predictable.
@@ -78,23 +82,25 @@ The scheduler is responsible for one thing: calling `model_update()` on the righ
 
 Different models run at different frequencies. Rather than running everything at the fastest rate (which would waste cycles calling slow models too often) or the slowest rate (which would under-sample fast models), SimLoom uses an event-driven approach with a min-heap.
 
-Each model has a scheduled next-fire time. The scheduler always pops the model with the smallest next-fire time, calls its `model_update()`, and re-queues it at `current_time + 1/update_rate`. This naturally handles any combination of update rates without a fixed global timestep.
+Each model has a scheduled next-fire time. The scheduler always pops the model with the smallest next-fire time, calls its `model_update()`, and re-queues it at `(steps + 1) / update_rate`, where `steps` counts how many times that model has updated. Computing the time from the step count, rather than adding `dt` over and over, avoids floating-point drift, so a 100 Hz model and a 50 Hz model land on exactly the same `t = 0.06`. This naturally handles any combination of update rates without a fixed global timestep.
 
 ```
-heap: [(0.0, model_A_100Hz), (0.0, model_B_1Hz)]
+heap: [(0.010, model_A_100Hz), (1.000, model_B_1Hz)]
 
-pop model_A → update at t=0.000 → re-queue at t=0.010
 pop model_A → update at t=0.010 → re-queue at t=0.020
+pop model_A → update at t=0.020 → re-queue at t=0.030
 ...
-pop model_B → update at t=0.000 → re-queue at t=1.000  (interleaved naturally)
+pop model_B → update at t=1.000 → re-queue at t=2.000  (interleaved naturally)
 ```
+
+`model_initialize()` sets each model's state at t = 0, and `model_update(t)` brings that state *to* time t. So the first update happens one step in, at t = 1/rate, never at t = 0. Between updates, a model's published values hold, so a 1 Hz model's output stays constant while a 100 Hz model updates 100 times. Because no update happens at t = 0, anything observed at t = 0 is the true initial condition.
 
 ### Lifecycle
 
 The full simulation lifecycle is:
 
 1. **Initialize** — call `model_initialize()` on all models in ascending `model_order()` sequence. Order matters when one model's initialization depends on another's output.
-2. **Event loop** — repeatedly pop the earliest-scheduled model, call `model_update()`, re-queue. Stop when the heap is empty or the scheduled time reaches the scenario duration.
+2. **Event loop** — repeatedly pop the earliest-scheduled model, call `model_update()`, re-queue. Stop when the heap is empty or the next scheduled time is past the scenario duration (an update scheduled exactly at the duration still runs).
 3. **Finalize** — call `model_finalize()` on all models, regardless of their individual stop times.
 
 ---
@@ -119,20 +125,26 @@ This is in contrast to `main.py`, which auto-discovers every `.so` in the build 
 Loggers record message bus signals to disk. They live in `python/loggers/` and are set up entirely in the scenario script, so you can start recording a new signal without rebuilding any C++.
 
 ```python
-from loggers import InitialConditionLogger
+from loggers import InitialConditionLogger, TimeSeriesLogger
 
 ic_log = InitialConditionLogger("output/my_run/ic.json")
 ic_log.add("example/counter")            # an exact bus key
 ic_log.add("nav/*")                      # or a glob pattern
 ic_log.add_value("description", "run 1") # any Python constant: numbers, strings, dicts
 sched.add_logger(ic_log)
+
+ts_log = TimeSeriesLogger("output/my_run/ts.json", rate=None, csv=True)
+ts_log.add("example/*")
+sched.add_logger(ts_log)
 ```
 
 Different kinds of variables go to different logger types. `InitialConditionLogger` is for initial conditions and constant inputs: it takes one snapshot right after every model has initialized and writes JSON with three sections. `run` holds the timestamp, duration, and each model's order, rate, stop time and params. `signals` holds the bus values. `values` holds the Python constants. The file is written right away, so it survives a crash later in the run.
 
-Every logger subclasses `loggers.base.Logger` and receives three scheduler hooks: `on_initialize`, `on_step` (after each model update), and `on_finalize`. Python reads the bus through a small C API (`bus_get`, `bus_has`, `bus_publish`, `bus_keys`) exported by `message_bus.so`.
+`TimeSeriesLogger` is for time-dependent signals. It takes a sample at the end of each *frame*, meaning once every model scheduled at the current `sim_time` has updated, so a sample never catches the bus half-updated. With `rate=None` it samples every frame; with `rate=<Hz>` it samples at a fixed rate instead. The JSON it writes is column-oriented: a `t` array plus one array per signal. That layout converts directly to CSV, either automatically with `csv=True` or afterwards with `python3 -m loggers <file.json>`.
 
-See `python/scenarios/initial_conditions.py` for a complete example.
+Every logger subclasses `loggers.base.Logger` and receives four scheduler hooks: `on_initialize`, `on_step` (after each model update), `on_frame` (after all updates at one `sim_time`), and `on_finalize`. Python reads the bus through a small C API (`bus_get`, `bus_has`, `bus_publish`, `bus_keys`) exported by `message_bus.so`.
+
+See `python/scenarios/initial_conditions.py` and `python/scenarios/time_series.py` for complete examples. The second one runs three `example_model` instances: one at 100 Hz, one at 25 Hz, and one that is never clocked.
 
 ---
 
